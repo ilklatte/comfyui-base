@@ -3,7 +3,7 @@ name: Verify and publish Docker image
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ['r*']
   pull_request:
     branches: [main]
 
@@ -39,7 +39,7 @@ jobs:
           test "$(python3 -c "import json; print(len(json.load(open('template.json'))['custom_nodes']['repos']))")" -eq 0
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/r')
     needs: verify
     runs-on: ubuntu-latest
     steps:
@@ -55,15 +55,14 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+)*$ ]] || { echo 'Release tag must be vN, vN.N, or vN.N.N'; exit 2; }
+          [[ "$GITHUB_REF_NAME" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
           for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL RUNPOD_TEMPLATE_IDS DOCKERHUB_USERNAME DOCKERHUB_TOKEN RUNPOD_API_KEY; do
             test -n "${!name}" || { echo "$name is required"; exit 2; }
           done
           cuda_base_image=$(python3 -c "import json; print(json.load(open('pins.json'))['base_image'])")
           [[ "$cuda_base_image" == nvidia/cuda:12.8.*-cudnn-devel-ubuntu24.04 ]] || { echo 'pins.json must select the approved NVIDIA CUDA 12.8 cuDNN devel image'; exit 2; }
-          image_tag=$(python3 - "$GITHUB_REF_NAME" <<'PY'
+          image_tag=$(python3 - <<'PY'
           import json
-          import sys
 
           pins = json.load(open("pins.json"))
           print(
@@ -71,7 +70,7 @@ jobs:
               f"-torch{pins['pytorch_version']}"
               f"-comfyui{pins['comfyui_version']}"
               f"-python{pins['python_version']}"
-              f"-{sys.argv[1]}"
+              f"-{__import__('os').environ['GITHUB_REF_NAME']}"
           )
           PY
           )

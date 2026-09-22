@@ -17,9 +17,9 @@ has been removed.
 3. Add repository variable `DOCKER_IMAGE` with an `owner/repository` Docker Hub image name.
 4. Add Actions secrets `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and `RUNPOD_API_KEY`.
 5. Add repository variable `RUNPOD_TEMPLATE_IDS` only after creating the target RunPod template.
-6. Push a release tag such as `v1`. The workflow publishes an immutable image
-   tag such as `cuda12.8.1-torch2.11.0-comfyui0.36.0-python3.12-v1` and also
-   advances the rolling `latest` tag. RunPod is updated with the immutable tag.
+6. Push a release tag such as `r1`. The workflow publishes the immutable image
+   tag `cuda12.8.1-torch2.11.0-comfyui0.36.0-python3.12-r1` and also advances
+   the rolling `latest` tag. RunPod uses the immutable `rN` tag.
 
 Publish this image before building `comfyui-wan`. The Wan repository must pin
 the resulting immutable, version-qualified image in its `pins.json`.
