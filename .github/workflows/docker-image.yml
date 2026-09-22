@@ -48,15 +48,13 @@ jobs:
       - name: Validate release configuration
         id: release
         env:
-          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
-          TEMPLATE_REPOSITORY_URL: ${{ vars.TEMPLATE_REPOSITORY_URL }}
-          RUNPOD_TEMPLATE_IDS: ${{ vars.RUNPOD_TEMPLATE_IDS }}
+          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE || 'coohh88/comfyui-base' }}
+          TEMPLATE_REPOSITORY_URL: ${{ vars.TEMPLATE_REPOSITORY_URL || 'https://github.com/ilklatte/comfyui-base.git' }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
           [[ "$GITHUB_REF_NAME" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
-          for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL RUNPOD_TEMPLATE_IDS DOCKERHUB_USERNAME DOCKERHUB_TOKEN RUNPOD_API_KEY; do
+          for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
             test -n "${!name}" || { echo "$name is required"; exit 2; }
           done
           cuda_base_image=$(python3 -c "import json; print(json.load(open('pins.json'))['base_image'])")
@@ -97,11 +95,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Promote image to RunPod templates
+        if: vars.RUNPOD_TEMPLATE_IDS != ''
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
           RUNPOD_TEMPLATE_IDS: ${{ vars.RUNPOD_TEMPLATE_IDS }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
         run: |
+          test -n "$RUNPOD_API_KEY" || { echo 'RUNPOD_API_KEY is required when RUNPOD_TEMPLATE_IDS is configured'; exit 2; }
           python3 tools/update_runpod_template.py \
             --image "$DOCKER_IMAGE:${{ steps.release.outputs.image_tag }}" \
             --expected-repository "$DOCKER_IMAGE" \
