@@ -6,6 +6,13 @@ Python 3.12, PyTorch cu128, ComfyUI, ComfyUI Manager, JupyterLab, the shared
 Hugging Face/CivitAI runtime tooling, a root tmux environment, and a pinned
 general-purpose custom-node suite. It downloads no model family by default.
 
+The image owns the CUDA 12 ONNX Runtime selection in `ort/cu128.txt`. Node
+requirements may temporarily install either ONNX Runtime distribution during
+the build, but the final image contains only the pinned GPU package and must
+expose `CUDAExecutionProvider`. The same requirement is retained inside the
+image at `/ort-requirement.txt` as the Base-owned version record. The external
+runtime independently keeps its existing startup-time CUDA-provider repair.
+
 The boot, model-download, persistence, and reporting logic still comes from
 `Hearmeman24/comfyui-runtime`; only the previous prebuilt base-image dependency
 has been removed.

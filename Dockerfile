@@ -36,6 +36,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 ENV PIP_CONSTRAINT=/torch-constraint.txt \
     ORT_INDEX_ARGS="--index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/"
 
+# Keep the CUDA-12 ONNX Runtime choice in a reusable, pinned requirement.
+# The file remains in the final image as the Base-owned version record; the
+# external runtime keeps its own defensive CUDA-provider check at pod startup.
+COPY ort/cu128.txt /ort-requirement.txt
+
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install packaging setuptools wheel \
         pyyaml gdown triton jupyterlab jupyterlab-lsp \
@@ -143,12 +148,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     done
 
 # A custom-node dependency may install CPU-only onnxruntime last. Reassert the
-# GPU package after every node dependency, then fail the image build unless the
-# CUDA provider is actually exposed.
+# pinned GPU package after every node dependency, then fail the image build
+# unless the CPU distribution is absent and the CUDA provider is exposed.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y onnxruntime onnxruntime-gpu 2>/dev/null || true; \
-    pip install onnxruntime-gpu $ORT_INDEX_ARGS; \
-    python3 -c "import onnxruntime; p = onnxruntime.get_available_providers(); assert 'CUDAExecutionProvider' in p, p; print('onnxruntime providers OK:', p)"
+    pip install -r /ort-requirement.txt; \
+    python3 -c "import importlib.metadata as m; names = {d.metadata['Name'].lower() for d in m.distributions() if d.metadata['Name']}; assert 'onnxruntime' not in names, names; assert m.version('onnxruntime-gpu') == '1.29.0'; import onnxruntime as o; p = o.get_available_providers(); assert 'CUDAExecutionProvider' in p, p; print('onnxruntime-gpu', o.__version__, 'providers OK:', p)"
 
 COPY src/start_script.sh /start_script.sh
 RUN chmod +x /start_script.sh
