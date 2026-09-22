@@ -98,6 +98,9 @@ COPY src/tmux.conf.local /root/.tmux.conf.local
 # General-purpose node suite. These packs are image-baked rather than listed
 # in template.json, so boot never clones or replaces them. Install scripts run
 # from their own directories because several packs use relative paths.
+# Impact Pack pulls SAM2 from Git. Requirements installs disable PEP 517
+# isolation so SAM2 reuses the installed CUDA Torch instead of asking the
+# default PyPI index for the constrained +cu128 build.
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eu; \
     clone_at() { \
@@ -135,7 +138,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         /ComfyUI/custom_nodes/ComfyUI-GGUF \
         /ComfyUI/custom_nodes/ComfyUI-segment-anything-2 \
         /ComfyUI/custom_nodes/was-node-suite-comfyui; do \
-        if [ -f "$dir/requirements.txt" ]; then pip install -r "$dir/requirements.txt"; fi; \
+        if [ -f "$dir/requirements.txt" ]; then pip install --no-build-isolation -r "$dir/requirements.txt"; fi; \
         if [ -f "$dir/install.py" ]; then (cd "$dir" && python3 install.py); fi; \
     done
 
