@@ -1,0 +1,14 @@
+{
+  "template_repo": "https://github.com/ilklatte/comfyui-base.git",
+  "branch": "main",
+  "provisioning_mode": "walk",
+  "flags": {},
+  "auto_download": [],
+  "models_symlink": false,
+  "custom_nodes": {
+    "target": "image",
+    "repos": []
+  },
+  "sage": true,
+  "jupyter": true
+}

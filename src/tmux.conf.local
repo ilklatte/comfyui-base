@@ -1,0 +1,13 @@
+# Oh My Tmux discovers these declarations and manages TPM itself. Do not add
+# `tmux-plugins/tpm` or a manual `run .../tpm` line here.
+tmux_conf_update_plugins_on_launch=false
+tmux_conf_update_plugins_on_reload=false
+tmux_conf_uninstall_plugins_on_reload=false
+
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+
+set -g @resurrect-dir '/workspace/.tmux/resurrect'
+set -g @continuum-restore 'on'
+set -g @continuum-save-interval '15'

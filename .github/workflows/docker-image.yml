@@ -1,0 +1,109 @@
+name: Verify and publish Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate template files
+        run: |
+          bash -n src/start_script.sh
+          python3 -m py_compile tools/*.py
+          find . -path ./.git -prune -o -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
+          python3 tools/validate_models.py --offline
+      - name: Validate terminal and node build contract
+        run: |
+          grep -q '^ARG CUDA_BASE_IMAGE=nvidia/cuda:12\.8\.' Dockerfile
+          ! grep -q 'hearmeman/comfyui-base' Dockerfile
+          grep -q '^torch==2\.11\.0$' torch/cu128.txt
+          grep -q 'tmux perl' Dockerfile
+          grep -q 'gpakosz/.tmux.git /root/.tmux [0-9a-f]\{40\}' Dockerfile
+          grep -q 'tmux-plugins/tpm.git /root/.tmux/plugins/tpm [0-9a-f]\{40\}' Dockerfile
+          grep -q "@plugin 'tmux-plugins/tmux-sensible'" src/tmux.conf.local
+          grep -q "@plugin 'tmux-plugins/tmux-resurrect'" src/tmux.conf.local
+          grep -q "@plugin 'tmux-plugins/tmux-continuum'" src/tmux.conf.local
+          grep -q "@resurrect-dir '/workspace/.tmux/resurrect'" src/tmux.conf.local
+          test "$(grep -c '^    clone_at https://github.com/.\+ /ComfyUI/custom_nodes/' Dockerfile)" -eq 13
+          grep -q 'CUDAExecutionProvider' Dockerfile
+          test "$(python3 -c "import json; print(len(json.load(open('template.json'))['custom_nodes']['repos']))")" -eq 0
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate release configuration
+        id: release
+        env:
+          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
+          TEMPLATE_REPOSITORY_URL: ${{ vars.TEMPLATE_REPOSITORY_URL }}
+          RUNPOD_TEMPLATE_IDS: ${{ vars.RUNPOD_TEMPLATE_IDS }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+(\.[0-9]+)*$ ]] || { echo 'Release tag must be vN, vN.N, or vN.N.N'; exit 2; }
+          for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL RUNPOD_TEMPLATE_IDS DOCKERHUB_USERNAME DOCKERHUB_TOKEN RUNPOD_API_KEY; do
+            test -n "${!name}" || { echo "$name is required"; exit 2; }
+          done
+          cuda_base_image=$(python3 -c "import json; print(json.load(open('pins.json'))['base_image'])")
+          [[ "$cuda_base_image" == nvidia/cuda:12.8.*-cudnn-devel-ubuntu24.04 ]] || { echo 'pins.json must select the approved NVIDIA CUDA 12.8 cuDNN devel image'; exit 2; }
+          image_tag=$(python3 - "$GITHUB_REF_NAME" <<'PY'
+          import json
+          import sys
+
+          pins = json.load(open("pins.json"))
+          print(
+              f"cuda{pins['cuda_version']}"
+              f"-torch{pins['pytorch_version']}"
+              f"-comfyui{pins['comfyui_version']}"
+              f"-python{pins['python_version']}"
+              f"-{sys.argv[1]}"
+          )
+          PY
+          )
+          echo "cuda_base_image=$cuda_base_image" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push immutable image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ vars.DOCKER_IMAGE }}:${{ steps.release.outputs.image_tag }}
+            ${{ vars.DOCKER_IMAGE }}:latest
+          build-args: |
+            CUDA_BASE_IMAGE=${{ steps.release.outputs.cuda_base_image }}
+            TEMPLATE_REPOSITORY_URL=${{ vars.TEMPLATE_REPOSITORY_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Promote image to RunPod templates
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          RUNPOD_TEMPLATE_IDS: ${{ vars.RUNPOD_TEMPLATE_IDS }}
+          DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
+        run: |
+          python3 tools/update_runpod_template.py \
+            --image "$DOCKER_IMAGE:${{ steps.release.outputs.image_tag }}" \
+            --expected-repository "$DOCKER_IMAGE" \
+            --template-ids "$RUNPOD_TEMPLATE_IDS"
