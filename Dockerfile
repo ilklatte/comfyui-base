@@ -72,6 +72,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # The per-extension architecture patch is maintained in this repository; it
 # prevents Hopper-only kernels from being compiled for incompatible targets.
 ARG SAGE_ATTENTION_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
+ARG SAGE_BUILD_JOBS=2
+ARG SAGE_NVCC_THREADS=2
+ARG SAGE_EXT_PARALLEL=1
+ARG SAGE_CUDA_ARCH_LIST=8.0;8.9;9.0;12.0
 COPY sage/sage_per_ext_gencode.patch /tmp/sage_per_ext_gencode.patch
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eu; \
@@ -83,8 +87,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     test "$(git -C /tmp/SageAttention rev-parse HEAD)" = "$SAGE_ATTENTION_REF"; \
     git -C /tmp/SageAttention apply /tmp/sage_per_ext_gencode.patch; \
     mkdir -p /opt/sage/cu128; \
-    TORCH_CUDA_ARCH_LIST='8.0;8.9;9.0;12.0' \
-    EXT_PARALLEL=4 NVCC_APPEND_FLAGS='--threads 8' MAX_JOBS=8 \
+    TORCH_CUDA_ARCH_LIST="$SAGE_CUDA_ARCH_LIST" \
+    EXT_PARALLEL="$SAGE_EXT_PARALLEL" \
+    NVCC_APPEND_FLAGS="--threads $SAGE_NVCC_THREADS" \
+    MAX_JOBS="$SAGE_BUILD_JOBS" \
         pip wheel --no-deps --no-build-isolation \
         --wheel-dir /opt/sage/cu128 /tmp/SageAttention; \
     pip install --no-deps /opt/sage/cu128/sageattention-*.whl; \
