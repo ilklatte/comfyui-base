@@ -48,12 +48,14 @@ jobs:
     resource_class: large
     environment:
       DOCKER_BUILDKIT: "1"
+      RELEASE_REF: << pipeline.config.ref >>
     steps:
       - checkout
       - run:
           name: Validate release configuration
           command: |
-            [[ "${CIRCLE_TAG:-}" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
+            export RELEASE_TAG="${RELEASE_REF#refs/tags/}"
+            [[ "$RELEASE_REF" == refs/tags/* && "$RELEASE_TAG" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
             export DOCKER_IMAGE="${DOCKER_IMAGE:-coohh88/comfyui-base}"
             export TEMPLATE_REPOSITORY_URL="${TEMPLATE_REPOSITORY_URL:-https://github.com/ilklatte/comfyui-base.git}"
             for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
@@ -71,7 +73,7 @@ jobs:
                 f"-torch{pins['pytorch_version']}"
                 f"-comfyui{pins['comfyui_version']}"
                 f"-python{pins['python_version']}"
-                f"-{os.environ['CIRCLE_TAG']}"
+                f"-{os.environ['RELEASE_TAG']}"
             )
             PY
             )
@@ -125,4 +127,4 @@ workflows:
       - publish:
           requires:
             - verify
-          filters: pipeline.git.tag matches "^r[1-9][0-9]*$"
+          filters: pipeline.config.ref matches "^refs/tags/r[1-9][0-9]*$"
