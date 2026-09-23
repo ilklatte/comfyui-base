@@ -29,8 +29,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY torch/cu128.txt /torch-trio.txt
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /torch-trio.txt \
+RUN pip install --no-cache-dir \
+        filelock 'typing-extensions>=4.10.0' 'setuptools<82' \
+        'sympy>=1.13.3' 'networkx>=2.5.1' jinja2 'fsspec>=0.8.5' \
+        'cuda-bindings>=12.9.4,<13' nvidia-cusparselt-cu12==0.7.1 \
+        nvidia-nvshmem-cu12==3.4.5 nvidia-nccl-cu12==2.28.9 \
+        triton==3.6.0 numpy pillow \
+    && pip install --no-cache-dir --no-deps -r /torch-trio.txt \
+    && python3 -c "import torch; assert torch.version.cuda == '12.8', torch.version.cuda; print('torch', torch.__version__, 'cuda', torch.version.cuda)" \
+    && sed -i -E '/^Requires-Dist: (cuda-toolkit|nvidia-cudnn-cu12|nvidia-cusparselt-cu12|nvidia-nccl-cu12|nvidia-nvshmem-cu12)/d' \
+        /opt/venv/lib/python3.12/site-packages/torch-*.dist-info/METADATA \
     && pip freeze | grep -E "^(torch|torchvision|torchaudio|torchsde)==" > /torch-constraint.txt
 
 ENV PIP_CONSTRAINT=/torch-constraint.txt \
