@@ -13,6 +13,12 @@ expose `CUDAExecutionProvider`. The same requirement is retained inside the
 image at `/ort-requirement.txt` as the Base-owned version record. The external
 runtime independently keeps its existing startup-time CUDA-provider repair.
 
+The final Python 3.12 numerical stack is pinned in `numeric/py312.txt`. It is
+reinstalled after all custom-node dependencies and must import ComfyUI's SciPy
+integration and sparse paths during the image build. This prevents node
+packages from leaving an incompatible NumPy/SciPy combination that only fails
+when ComfyUI starts.
+
 The boot, model-download, persistence, and reporting logic still comes from
 `Hearmeman24/comfyui-runtime`; only the previous prebuilt base-image dependency
 has been removed.

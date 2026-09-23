@@ -40,6 +40,7 @@ ENV PIP_CONSTRAINT=/torch-constraint.txt \
 # The file remains in the final image as the Base-owned version record; the
 # external runtime keeps its own defensive CUDA-provider check at pod startup.
 COPY ort/cu128.txt /ort-requirement.txt
+COPY numeric/py312.txt /numeric-requirement.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install packaging setuptools wheel \
@@ -146,6 +147,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         if [ -f "$dir/requirements.txt" ]; then pip install --no-build-isolation -r "$dir/requirements.txt"; fi; \
         if [ -f "$dir/install.py" ]; then (cd "$dir" && python3 install.py); fi; \
     done
+
+# Custom-node requirements are installed independently and can leave NumPy and
+# SciPy from incompatible release families. Reassert the Python 3.12 numerical
+# stack after every node dependency and import the exact ComfyUI code paths
+# that previously failed during startup.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --force-reinstall -r /numeric-requirement.txt; \
+    python3 -c "import numpy, scipy, scipy.integrate, scipy.sparse; assert numpy.__version__ == '1.26.4', numpy.__version__; assert scipy.__version__ == '1.13.1', scipy.__version__; print('numerical stack OK:', numpy.__version__, scipy.__version__)"
 
 # A custom-node dependency may install CPU-only onnxruntime last. Reassert the
 # pinned GPU package after every node dependency, then fail the image build
