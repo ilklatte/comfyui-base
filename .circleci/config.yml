@@ -1,0 +1,134 @@
+version: 2.1
+
+jobs:
+  verify:
+    docker:
+      - image: cimg/python:3.12
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Validate template files
+          command: |
+            bash -n src/start_script.sh
+            python3 -m py_compile tools/*.py
+            find . -path ./.git -prune -o -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
+            python3 tools/validate_models.py --registry src/models_registry.json --workflows workflows --template template.json --offline
+      - run:
+          name: Validate terminal and node build contract
+          command: |
+            grep -q '^ARG CUDA_BASE_IMAGE=nvidia/cuda:12\.8\.' Dockerfile
+            ! grep -q 'hearmeman/comfyui-base' Dockerfile
+            grep -q '^torch==2\.11\.0$' torch/cu128.txt
+            grep -q '^ARG SAGE_ATTENTION_REF=[0-9a-f]\{40\}$' Dockerfile
+            grep -q 'github.com/thu-ml/SageAttention.git' Dockerfile
+            ! grep -q 'Hearmeman24/comfyui-runtime/releases' Dockerfile
+            grep -q 'tmux perl' Dockerfile
+            grep -q 'gpakosz/.tmux.git /root/.tmux [0-9a-f]\{40\}' Dockerfile
+            grep -q 'tmux-plugins/tpm.git /root/.tmux/plugins/tpm [0-9a-f]\{40\}' Dockerfile
+            grep -q "@plugin 'tmux-plugins/tmux-sensible'" src/tmux.conf.local
+            grep -q "@plugin 'tmux-plugins/tmux-resurrect'" src/tmux.conf.local
+            grep -q "@plugin 'tmux-plugins/tmux-continuum'" src/tmux.conf.local
+            grep -q "@resurrect-dir '/workspace/.tmux/resurrect'" src/tmux.conf.local
+            test "$(grep -c '^    clone_at https://github.com/.\+ /ComfyUI/custom_nodes/' Dockerfile)" -eq 13
+            grep -q '^numpy==1\.26\.4$' numeric/py312.txt
+            grep -q '^scipy==1\.13\.1$' numeric/py312.txt
+            grep -q 'import numpy, scipy, scipy.integrate, scipy.sparse' Dockerfile
+            grep -q '^RUNTIME_DIR=/opt/comfyui-runtime$' src/start_script.sh
+            ! grep -q 'Hearmeman24/comfyui-runtime.git' src/start_script.sh
+            grep -q '^RUNTIME_DIR="/opt/comfyui-runtime"$' runtime/src/start.sh
+            grep -q '^\[\]$' runtime/src/runtime_nodes.json
+            ! grep -q -- '--notes-root' runtime/src/start.sh
+            grep -q 'CUDAExecutionProvider' Dockerfile
+            test "$(python3 -c "import json; print(len(json.load(open('template.json'))['custom_nodes']['repos']))")" -eq 0
+
+  publish:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: large
+    environment:
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - checkout
+      - run:
+          name: Validate release configuration
+          command: |
+            [[ "${CIRCLE_TAG:-}" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
+            export DOCKER_IMAGE="${DOCKER_IMAGE:-coohh88/comfyui-base}"
+            export TEMPLATE_REPOSITORY_URL="${TEMPLATE_REPOSITORY_URL:-https://github.com/ilklatte/comfyui-base.git}"
+            for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
+              test -n "${!name:-}" || { echo "$name is required"; exit 2; }
+            done
+            cuda_base_image=$(python3 -c "import json; print(json.load(open('pins.json'))['base_image'])")
+            [[ "$cuda_base_image" == nvidia/cuda:12.8.*-cudnn-devel-ubuntu24.04 ]] || { echo 'pins.json must select the approved NVIDIA CUDA 12.8 cuDNN devel image'; exit 2; }
+            image_tag=$(python3 - <<'PY'
+            import json
+            import os
+
+            pins = json.load(open("pins.json"))
+            print(
+                f"cuda{pins['cuda_version']}"
+                f"-torch{pins['pytorch_version']}"
+                f"-comfyui{pins['comfyui_version']}"
+                f"-python{pins['python_version']}"
+                f"-{os.environ['CIRCLE_TAG']}"
+            )
+            PY
+            )
+            {
+              echo "export DOCKER_IMAGE='$DOCKER_IMAGE'"
+              echo "export TEMPLATE_REPOSITORY_URL='$TEMPLATE_REPOSITORY_URL'"
+              echo "export CUDA_BASE_IMAGE='$cuda_base_image'"
+              echo "export IMAGE_TAG='$image_tag'"
+            } >> "$BASH_ENV"
+      - run:
+          name: Log in to Docker Hub
+          command: echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - run:
+          name: Show available build storage
+          command: |
+            df -h /
+            docker system df
+      - run:
+          name: Build immutable image
+          no_output_timeout: 30m
+          command: |
+            docker build \
+              --progress=plain \
+              --build-arg "CUDA_BASE_IMAGE=$CUDA_BASE_IMAGE" \
+              --build-arg "TEMPLATE_REPOSITORY_URL=$TEMPLATE_REPOSITORY_URL" \
+              --build-arg SAGE_BUILD_JOBS=2 \
+              --build-arg SAGE_NVCC_THREADS=2 \
+              --build-arg SAGE_EXT_PARALLEL=1 \
+              --build-arg 'SAGE_CUDA_ARCH_LIST=8.0;8.9;9.0;12.0' \
+              --tag "$DOCKER_IMAGE:$IMAGE_TAG" \
+              --tag "$DOCKER_IMAGE:latest" \
+              .
+      - run:
+          name: Show final image storage
+          command: |
+            docker image ls "$DOCKER_IMAGE"
+            docker system df
+            df -h /
+      - run:
+          name: Push image tags
+          no_output_timeout: 30m
+          command: |
+            docker push "$DOCKER_IMAGE:$IMAGE_TAG"
+            docker push "$DOCKER_IMAGE:latest"
+
+workflows:
+  verify-and-publish:
+    jobs:
+      - verify:
+          filters:
+            tags:
+              only: /.*/
+      - publish:
+          requires:
+            - verify
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^r[1-9][0-9]*$/

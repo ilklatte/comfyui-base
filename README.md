@@ -36,16 +36,39 @@ Deployment reports are written to the pod log only. The runtime does not add
 welcome, model-help, or troubleshooting notes to the user's workflow list and
 removes the three exact note files produced by the former external runtime.
 
-## Before publishing
+## CI setup and publishing
+
+CircleCI is the automatic publisher. GitHub Actions remains available as a
+manual fallback and uses the GitHub-hosted runner's Docker Buildx; this project
+does not use Docker Build Cloud.
 
 1. Create a public Git repository and replace `template_repo` in `template.json`.
-2. Add GitHub repository variable `TEMPLATE_REPOSITORY_URL` with the same URL.
-3. Add repository variable `DOCKER_IMAGE` with an `owner/repository` Docker Hub image name.
-4. Add Actions secrets `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and `RUNPOD_API_KEY`.
-5. Add repository variable `RUNPOD_TEMPLATE_IDS` only after creating the target RunPod template.
-6. Push a release tag such as `r1`. The workflow publishes the immutable image
+2. In CircleCI, authorize the GitHub organization, open **Organization > Projects**,
+   select this repository, and choose the existing `.circleci/config.yml`.
+3. Open **Project Settings > Environment Variables** and add each variable
+   separately, without quotes or leading/trailing whitespace:
+
+   | Variable | Value |
+   | --- | --- |
+   | `DOCKER_IMAGE` | `coohh88/comfyui-base` |
+   | `TEMPLATE_REPOSITORY_URL` | `https://github.com/ilklatte/comfyui-base.git` |
+   | `DOCKERHUB_USERNAME` | Docker Hub account name |
+   | `DOCKERHUB_TOKEN` | Docker Hub personal access token with Read & Write permission |
+
+4. Do not configure `RUNPOD_API_KEY` or `RUNPOD_TEMPLATE_IDS` for this project.
+   The Base pipeline publishes an image but never updates a RunPod template.
+5. Keep `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` in GitHub Actions secrets,
+   plus `DOCKER_IMAGE` and `TEMPLATE_REPOSITORY_URL` in GitHub repository
+   variables, for the manual fallback workflow.
+6. Push a release tag such as `r1`. CircleCI publishes the immutable image
    tag `cuda12.8.1-torch2.11.0-comfyui0.36.0-python3.12-r1` and also advances
-   the rolling `latest` tag. RunPod uses the immutable `rN` tag.
+   the rolling `latest` tag.
+7. To use the fallback, open **GitHub Actions > Verify and publish Docker image >
+   Run workflow**, enter an existing `rN` tag, and run it manually.
+
+Create the Docker Hub token under **Docker Hub > Account Settings > Personal
+access tokens > Generate new token**. After CircleCI has published successfully,
+the obsolete `DOCKER_BUILD_CLOUD_ENDPOINT` GitHub variable can be removed.
 
 Publish this image before building `comfyui-wan`. The Wan repository must pin
 the resulting immutable, version-qualified image in its `pins.json`.

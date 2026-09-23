@@ -3,9 +3,14 @@ name: Verify and publish Docker image
 on:
   push:
     branches: [main]
-    tags: ['r*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing rN tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,6 +21,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - name: Validate template files
         run: |
           bash -n src/start_script.sh
@@ -50,23 +57,26 @@ jobs:
           test "$(python3 -c "import json; print(len(json.load(open('template.json'))['custom_nodes']['repos']))")" -eq 0
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/r')
+    if: github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     env:
       DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE || 'coohh88/comfyui-base' }}
       TEMPLATE_REPOSITORY_URL: ${{ vars.TEMPLATE_REPOSITORY_URL || 'https://github.com/ilklatte/comfyui-base.git' }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.release_tag }}
       - name: Validate release configuration
         id: release
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          [[ "$GITHUB_REF_NAME" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
-          for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
+          [[ "$RELEASE_TAG" =~ ^r[1-9][0-9]*$ ]] || { echo 'Release tag must be rN, for example r1'; exit 2; }
+          for name in DOCKER_IMAGE TEMPLATE_REPOSITORY_URL RELEASE_TAG DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
             test -n "${!name}" || { echo "$name is required"; exit 2; }
           done
           cuda_base_image=$(python3 -c "import json; print(json.load(open('pins.json'))['base_image'])")
@@ -80,22 +90,19 @@ jobs:
               f"-torch{pins['pytorch_version']}"
               f"-comfyui{pins['comfyui_version']}"
               f"-python{pins['python_version']}"
-              f"-{__import__('os').environ['GITHUB_REF_NAME']}"
+              f"-{__import__('os').environ['RELEASE_TAG']}"
           )
           PY
           )
           echo "cuda_base_image=$cuda_base_image" >> "$GITHUB_OUTPUT"
           echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Log in to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-        with:
-          driver: cloud
-          endpoint: ${{ vars.DOCKER_BUILD_CLOUD_ENDPOINT || 'coohh88/comfyui-image-builder' }}
       - name: Build and push immutable image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
@@ -112,15 +119,5 @@ jobs:
             SAGE_NVCC_THREADS=2
             SAGE_EXT_PARALLEL=1
             SAGE_CUDA_ARCH_LIST=8.0;8.9;9.0;12.0
-      - name: Promote image to RunPod templates
-        if: vars.RUNPOD_TEMPLATE_IDS != ''
-        env:
-          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-          RUNPOD_TEMPLATE_IDS: ${{ vars.RUNPOD_TEMPLATE_IDS }}
-          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
-        run: |
-          test -n "$RUNPOD_API_KEY" || { echo 'RUNPOD_API_KEY is required when RUNPOD_TEMPLATE_IDS is configured'; exit 2; }
-          python3 tools/update_runpod_template.py \
-            --image "$DOCKER_IMAGE:${{ steps.release.outputs.image_tag }}" \
-            --expected-repository "$DOCKER_IMAGE" \
-            --template-ids "$RUNPOD_TEMPLATE_IDS"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
