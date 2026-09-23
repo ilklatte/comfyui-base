@@ -68,15 +68,28 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && test "$(git -C /ComfyUI/custom_nodes/comfyui-manager rev-parse HEAD)" = 1698958286f487d6281920d2bfbe18beeb5eb85f \
     && if [ -f /ComfyUI/custom_nodes/comfyui-manager/requirements.txt ]; then pip install -r /ComfyUI/custom_nodes/comfyui-manager/requirements.txt; fi
 
-# Keep the existing shared runtime's CUDA 12.8 SageAttention artifact. The
-# runtime probes the real GPU at boot and falls back safely on unsupported
-# architectures.
-ADD --checksum=sha256:487aeccc76236043c06154dfac34626692af25f520a3634c71d0bf160ab27ed6 \
-    https://github.com/Hearmeman24/comfyui-runtime/releases/download/sage-d1a57a5-cu128-torch2.11.0/sageattention-2.2.0-cp312-cp312-linux_x86_64.whl \
-    /opt/sage/cu128/
-RUN python3 -c "import torch; v = torch.version.cuda; assert v and v.split('.')[0] == '12', v; print('torch', torch.__version__, 'cuda', v)" \
-    && pip install --no-deps /opt/sage/cu128/sageattention-*.whl \
-    && python3 -c "import sageattention; print('sageattention import OK')"
+# Build SageAttention from its official repository at an immutable commit.
+# The per-extension architecture patch is maintained in this repository; it
+# prevents Hopper-only kernels from being compiled for incompatible targets.
+ARG SAGE_ATTENTION_REF=d1a57a546c3d395b1ffcbeecc66d81db76f3b4b5
+COPY sage/sage_per_ext_gencode.patch /tmp/sage_per_ext_gencode.patch
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -eu; \
+    python3 -c "import torch; v = torch.version.cuda; assert v and v.split('.')[0] == '12', v; print('torch', torch.__version__, 'cuda', v)"; \
+    git init /tmp/SageAttention; \
+    git -C /tmp/SageAttention remote add origin https://github.com/thu-ml/SageAttention.git; \
+    git -C /tmp/SageAttention fetch --depth=1 origin "$SAGE_ATTENTION_REF"; \
+    git -C /tmp/SageAttention checkout --detach FETCH_HEAD; \
+    test "$(git -C /tmp/SageAttention rev-parse HEAD)" = "$SAGE_ATTENTION_REF"; \
+    git -C /tmp/SageAttention apply /tmp/sage_per_ext_gencode.patch; \
+    mkdir -p /opt/sage/cu128; \
+    TORCH_CUDA_ARCH_LIST='8.0;8.9;9.0;12.0' \
+    EXT_PARALLEL=4 NVCC_APPEND_FLAGS='--threads 8' MAX_JOBS=8 \
+        pip wheel --no-deps --no-build-isolation \
+        --wheel-dir /opt/sage/cu128 /tmp/SageAttention; \
+    pip install --no-deps /opt/sage/cu128/sageattention-*.whl; \
+    python3 -c "import sageattention; print('sageattention import OK')"; \
+    rm -rf /tmp/SageAttention /tmp/sage_per_ext_gencode.patch
 
 # Root is the interactive user in RunPod. Install tmux, Oh My Tmux, TPM, and
 # the selected plugins into /root. Every Git checkout is pinned to an exact
@@ -100,6 +113,14 @@ RUN set -eu; \
     tmux -V
 
 COPY src/tmux.conf.local /root/.tmux.conf.local
+
+# The complete pod runtime is owned by this repository and baked into the
+# image. Derived templates execute this immutable copy instead of cloning a
+# mutable third-party runtime branch when a pod starts.
+COPY runtime /opt/comfyui-runtime
+RUN chmod +x /opt/comfyui-runtime/src/start.sh \
+    /opt/comfyui-runtime/src/civitai_downloads.sh \
+    /opt/comfyui-runtime/src/civitai_env.sh
 
 # General-purpose node suite. These packs are image-baked rather than listed
 # in template.json, so boot never clones or replaces them. Install scripts run

@@ -4,8 +4,7 @@ set -u
 TEMPLATE_DIR=/comfyui-base
 TEMPLATE_URL="${TEMPLATE_REPOSITORY_URL:-https://github.com/ilklatte/comfyui-base.git}"
 TEMPLATE_BRANCH="${TEMPLATE_REPOSITORY_BRANCH:-main}"
-RUNTIME_DIR=/comfyui-runtime
-RUNTIME_URL=https://github.com/Hearmeman24/comfyui-runtime.git
+RUNTIME_DIR=/opt/comfyui-runtime
 
 if [[ "$TEMPLATE_URL" == REPLACE_* ]]; then
     echo "FATAL: set TEMPLATE_REPOSITORY_URL to the public Git repository for this template." >&2
@@ -33,20 +32,8 @@ if [ -z "$ok" ] && [ ! -d "$TEMPLATE_DIR/.git" ]; then
     exit 1
 fi
 
-RUNTIME_REF="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['runtime_ref'])" "$TEMPLATE_DIR/pins.json" 2>/dev/null || true)"
-if [ -z "$RUNTIME_REF" ]; then
-    echo "FATAL: pins.json does not contain runtime_ref." >&2
-    exit 2
-fi
-
-ok=""
-for attempt in 1 2 3 4 5; do
-    if sync_repo "$RUNTIME_DIR" "$RUNTIME_URL" "$RUNTIME_REF"; then ok=1; break; fi
-    echo "Runtime sync attempt $attempt failed; retrying in $((attempt * 5)) seconds."
-    sleep $((attempt * 5))
-done
-if [ -z "$ok" ] && [ ! -d "$RUNTIME_DIR/.git" ]; then
-    echo "FATAL: shared runtime is unavailable and no cached copy exists." >&2
+if [ ! -x "$RUNTIME_DIR/src/start.sh" ]; then
+    echo "FATAL: Base-owned runtime is missing at $RUNTIME_DIR/src/start.sh." >&2
     exit 1
 fi
 

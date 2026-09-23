@@ -21,12 +21,15 @@ jobs:
           bash -n src/start_script.sh
           python3 -m py_compile tools/*.py
           find . -path ./.git -prune -o -name '*.json' -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
-          python3 tools/validate_models.py --offline
+          python3 tools/validate_models.py --registry src/models_registry.json --workflows workflows --template template.json --offline
       - name: Validate terminal and node build contract
         run: |
           grep -q '^ARG CUDA_BASE_IMAGE=nvidia/cuda:12\.8\.' Dockerfile
           ! grep -q 'hearmeman/comfyui-base' Dockerfile
           grep -q '^torch==2\.11\.0$' torch/cu128.txt
+          grep -q '^ARG SAGE_ATTENTION_REF=[0-9a-f]\{40\}$' Dockerfile
+          grep -q 'github.com/thu-ml/SageAttention.git' Dockerfile
+          ! grep -q 'Hearmeman24/comfyui-runtime/releases' Dockerfile
           grep -q 'tmux perl' Dockerfile
           grep -q 'gpakosz/.tmux.git /root/.tmux [0-9a-f]\{40\}' Dockerfile
           grep -q 'tmux-plugins/tpm.git /root/.tmux/plugins/tpm [0-9a-f]\{40\}' Dockerfile
@@ -38,6 +41,11 @@ jobs:
           grep -q '^numpy==1\.26\.4$' numeric/py312.txt
           grep -q '^scipy==1\.13\.1$' numeric/py312.txt
           grep -q 'import numpy, scipy, scipy.integrate, scipy.sparse' Dockerfile
+          grep -q '^RUNTIME_DIR=/opt/comfyui-runtime$' src/start_script.sh
+          ! grep -q 'Hearmeman24/comfyui-runtime.git' src/start_script.sh
+          grep -q '^RUNTIME_DIR="/opt/comfyui-runtime"$' runtime/src/start.sh
+          grep -q '^\[\]$' runtime/src/runtime_nodes.json
+          ! grep -q -- '--notes-root' runtime/src/start.sh
           grep -q 'CUDAExecutionProvider' Dockerfile
           test "$(python3 -c "import json; print(len(json.load(open('template.json'))['custom_nodes']['repos']))")" -eq 0
 

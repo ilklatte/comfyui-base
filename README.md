@@ -10,8 +10,8 @@ The image owns the CUDA 12 ONNX Runtime selection in `ort/cu128.txt`. Node
 requirements may temporarily install either ONNX Runtime distribution during
 the build, but the final image contains only the pinned GPU package and must
 expose `CUDAExecutionProvider`. The same requirement is retained inside the
-image at `/ort-requirement.txt` as the Base-owned version record. The external
-runtime independently keeps its existing startup-time CUDA-provider repair.
+image at `/ort-requirement.txt` as the Base-owned version record. The
+Base-owned runtime also keeps a defensive startup-time CUDA-provider repair.
 
 The final Python 3.12 numerical stack is pinned in `numeric/py312.txt`. It is
 reinstalled after all custom-node dependencies and must import ComfyUI's SciPy
@@ -19,9 +19,22 @@ integration and sparse paths during the image build. This prevents node
 packages from leaving an incompatible NumPy/SciPy combination that only fails
 when ComfyUI starts.
 
-The boot, model-download, persistence, and reporting logic still comes from
-`Hearmeman24/comfyui-runtime`; only the previous prebuilt base-image dependency
-has been removed.
+SageAttention is built during the image build from the official
+`thu-ml/SageAttention` repository at the immutable commit declared by
+`SAGE_ATTENTION_REF`. The locally maintained per-extension architecture patch
+is under `sage/`; no prebuilt wheel is downloaded from another template
+maintainer.
+
+The boot, JupyterLab, model-download, persistence, SageAttention probing,
+ComfyUI liveness, and log-reporting code is maintained in this repository
+under `runtime/` and baked into `/opt/comfyui-runtime`. Pods do not clone or
+execute an external runtime repository. The initial implementation was adapted
+from the upstream revision recorded in `runtime/UPSTREAM_REVISION`; its
+AGPL-3.0 license and CivitAI downloader notices are retained there.
+
+Deployment reports are written to the pod log only. The runtime does not add
+welcome, model-help, or troubleshooting notes to the user's workflow list and
+removes the three exact note files produced by the former external runtime.
 
 ## Before publishing
 
