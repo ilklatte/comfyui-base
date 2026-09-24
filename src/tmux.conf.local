@@ -11,3 +11,13 @@ set -g @plugin 'tmux-plugins/tmux-continuum'
 set -g @resurrect-dir '/workspace/.tmux/resurrect'
 set -g @continuum-restore 'on'
 set -g @continuum-save-interval '15'
+
+# 远程linux使用Ctrl-b
+set -gu prefix2
+unbind C-a
+unbind C-b
+set -g prefix C-b
+bind C-b send-prefix
+
+# 开启鼠标
+set -g mouse on

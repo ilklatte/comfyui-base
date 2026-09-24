@@ -199,6 +199,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r /ort-requirement.txt; \
     python3 -c "import importlib.metadata as m; names = {d.metadata['Name'].lower() for d in m.distributions() if d.metadata['Name']}; assert 'onnxruntime' not in names, names; assert m.version('onnxruntime-gpu') == '1.29.0'; import onnxruntime as o; p = o.get_available_providers(); assert 'CUDAExecutionProvider' in p, p; print('onnxruntime-gpu', o.__version__, 'providers OK:', p)"
 
+RUN printf '%s\n' \
+    'export LS_COLORS="${LS_COLORS}:ow=01;34:tw=01;34"' \
+    >> /root/.bashrc
+
 COPY src/start_script.sh /start_script.sh
 RUN chmod +x /start_script.sh
 
