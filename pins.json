@@ -3,5 +3,10 @@
   "cuda_version": "12.8.1",
   "pytorch_version": "2.11.0",
   "comfyui_version": "0.36.0",
-  "python_version": "3.12"
+  "python_version": "3.12",
+  "numeric_stack": {
+    "numpy": "2.5.3",
+    "scipy": "1.16.3",
+    "cupy-cuda12x": "13.6.0"
+  }
 }

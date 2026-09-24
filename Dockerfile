@@ -47,7 +47,17 @@ RUN pip install --no-cache-dir \
 # The file remains in the final image as the Base-owned version record; the
 # external runtime keeps its own defensive CUDA-provider check at pod startup.
 COPY ort/cu128.txt /ort-requirement.txt
-COPY numeric/py312.txt /numeric-requirement.txt
+COPY pins.json /build-pins.json
+RUN python3 - <<'PY'
+import json
+from pathlib import Path
+
+pins = json.loads(Path('/build-pins.json').read_text())
+stack = pins['numeric_stack']
+Path('/numeric-requirement.txt').write_text(
+    ''.join(f'{name}=={version}\n' for name, version in stack.items())
+)
+PY
 RUN cat /torch-constraint.txt /numeric-requirement.txt > /base-constraint.txt
 
 # Every later pip invocation, including custom-node installers, must preserve
