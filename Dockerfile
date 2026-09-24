@@ -146,6 +146,8 @@ RUN chmod +x /opt/comfyui-runtime/src/start.sh \
 # Impact Pack pulls SAM2 from Git. Requirements installs disable PEP 517
 # isolation so SAM2 reuses the installed CUDA Torch instead of asking the
 # default PyPI index for the constrained +cu128 build.
+# Frame Interpolation is handled separately because its installer can replace
+# a working CuPy with an old cupy-wheel release that downgrades NumPy.
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eu; \
     clone_at() { \
@@ -183,6 +185,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         /ComfyUI/custom_nodes/ComfyUI-GGUF \
         /ComfyUI/custom_nodes/ComfyUI-segment-anything-2 \
         /ComfyUI/custom_nodes/was-node-suite-comfyui; do \
+        if [ "$dir" = "/ComfyUI/custom_nodes/ComfyUI-Frame-Interpolation" ]; then \
+            pip install --no-build-isolation -r "$dir/requirements-no-cupy.txt"; \
+            pip install --no-build-isolation cupy-cuda12x; \
+            continue; \
+        fi; \
         if [ -f "$dir/requirements.txt" ]; then pip install --no-build-isolation -r "$dir/requirements.txt"; fi; \
         if [ -f "$dir/install.py" ]; then (cd "$dir" && python3 install.py); fi; \
     done
