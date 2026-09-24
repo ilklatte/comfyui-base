@@ -45,10 +45,10 @@ jobs:
           grep -q "@plugin 'tmux-plugins/tmux-continuum'" src/tmux.conf.local
           grep -q "@resurrect-dir '/workspace/.tmux/resurrect'" src/tmux.conf.local
           test "$(grep -c '^    clone_at https://github.com/.\+ /ComfyUI/custom_nodes/' Dockerfile)" -eq 13
-          python3 -c "import json; assert json.load(open('pins.json'))['numeric_stack'] == {'numpy': '2.5.3', 'scipy': '1.16.3', 'cupy-cuda12x': '13.6.0'}"
-          grep -q '^ENV PIP_CONSTRAINT=/base-constraint\.txt' Dockerfile
-          grep -q 'import numpy, scipy, cupy, scipy.integrate, scipy.sparse' Dockerfile
+          python3 -c "import json; assert 'numeric_stack' not in json.load(open('pins.json'))"
+          grep -q '^ENV PIP_CONSTRAINT=/torch-constraint\.txt' Dockerfile
           grep -q 'pip check' Dockerfile
+          ! grep -q 'numeric-requirement' Dockerfile
           grep -q '^RUNTIME_DIR=/opt/comfyui-runtime$' src/start_script.sh
           ! grep -q 'Hearmeman24/comfyui-runtime.git' src/start_script.sh
           grep -q '^RUNTIME_DIR="/opt/comfyui-runtime"$' runtime/src/start.sh
