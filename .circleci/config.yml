@@ -31,9 +31,12 @@ jobs:
             grep -q "@plugin 'tmux-plugins/tmux-continuum'" src/tmux.conf.local
             grep -q "@resurrect-dir '/workspace/.tmux/resurrect'" src/tmux.conf.local
             test "$(grep -c '^    clone_at https://github.com/.\+ /ComfyUI/custom_nodes/' Dockerfile)" -eq 13
-            grep -q '^numpy==1\.26\.4$' numeric/py312.txt
-            grep -q '^scipy==1\.13\.1$' numeric/py312.txt
-            grep -q 'import numpy, scipy, scipy.integrate, scipy.sparse' Dockerfile
+            grep -q '^numpy==2\.5\.3$' numeric/py312.txt
+            grep -q '^scipy==1\.16\.3$' numeric/py312.txt
+            grep -q '^cupy-cuda12x==13\.6\.0$' numeric/py312.txt
+            grep -q '^ENV PIP_CONSTRAINT=/base-constraint\.txt' Dockerfile
+            grep -q 'import numpy, scipy, cupy, scipy.integrate, scipy.sparse' Dockerfile
+            grep -q 'pip check' Dockerfile
             grep -q '^RUNTIME_DIR=/opt/comfyui-runtime$' src/start_script.sh
             ! grep -q 'Hearmeman24/comfyui-runtime.git' src/start_script.sh
             grep -q '^RUNTIME_DIR="/opt/comfyui-runtime"$' runtime/src/start.sh

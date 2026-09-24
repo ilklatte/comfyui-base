@@ -13,11 +13,13 @@ expose `CUDAExecutionProvider`. The same requirement is retained inside the
 image at `/ort-requirement.txt` as the Base-owned version record. The
 Base-owned runtime also keeps a defensive startup-time CUDA-provider repair.
 
-The final Python 3.12 numerical stack is pinned in `numeric/py312.txt`. It is
-reinstalled after all custom-node dependencies and must import ComfyUI's SciPy
-integration and sparse paths during the image build. This prevents node
-packages from leaving an incompatible NumPy/SciPy combination that only fails
-when ComfyUI starts.
+The final Python 3.12 numerical stack is pinned in `numeric/py312.txt` at
+NumPy 2.5.3, SciPy 1.16.3, and CuPy CUDA 12.x 13.6.0. These pins are merged
+with the Torch pins into `/base-constraint.txt`, so custom-node installers
+cannot silently move the shared numerical or Torch stack. The versions are
+reinstalled after all custom-node dependencies, checked with `pip check`, and
+must import ComfyUI's SciPy integration and sparse paths during the image
+build.
 
 SageAttention is built during the image build from the official
 `thu-ml/SageAttention` repository at the immutable commit declared by

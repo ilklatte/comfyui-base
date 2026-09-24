@@ -43,14 +43,18 @@ RUN pip install --no-cache-dir \
         /opt/venv/lib/python3.12/site-packages/torch-*.dist-info/METADATA \
     && pip freeze | grep -E "^(torch|torchvision|torchaudio|torchsde)==" > /torch-constraint.txt
 
-ENV PIP_CONSTRAINT=/torch-constraint.txt \
-    ORT_INDEX_ARGS="--index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/"
-
 # Keep the CUDA-12 ONNX Runtime choice in a reusable, pinned requirement.
 # The file remains in the final image as the Base-owned version record; the
 # external runtime keeps its own defensive CUDA-provider check at pod startup.
 COPY ort/cu128.txt /ort-requirement.txt
 COPY numeric/py312.txt /numeric-requirement.txt
+RUN cat /torch-constraint.txt /numeric-requirement.txt > /base-constraint.txt
+
+# Every later pip invocation, including custom-node installers, must preserve
+# the validated Torch and numerical stack. Reinstalling the pins near the end
+# remains a defensive repair for installers that explicitly bypass constraints.
+ENV PIP_CONSTRAINT=/base-constraint.txt \
+    ORT_INDEX_ARGS="--index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/"
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install packaging setuptools wheel \
@@ -185,13 +189,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         if [ -f "$dir/install.py" ]; then (cd "$dir" && python3 install.py); fi; \
     done
 
-# Custom-node requirements are installed independently and can leave NumPy and
-# SciPy from incompatible release families. Reassert the Python 3.12 numerical
-# stack after every node dependency and import the exact ComfyUI code paths
-# that previously failed during startup.
+# Custom-node requirements are installed independently and may try to replace
+# NumPy, SciPy, or CuPy. Reassert the Python 3.12 numerical stack after every
+# node dependency, require a consistent package graph, and import the exact
+# ComfyUI code paths that previously failed during startup.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --force-reinstall -r /numeric-requirement.txt; \
-    python3 -c "import numpy, scipy, scipy.integrate, scipy.sparse; assert numpy.__version__ == '1.26.4', numpy.__version__; assert scipy.__version__ == '1.13.1', scipy.__version__; print('numerical stack OK:', numpy.__version__, scipy.__version__)"
+    pip check; \
+    python3 -c "import numpy, scipy, cupy, scipy.integrate, scipy.sparse; assert numpy.__version__ == '2.5.3', numpy.__version__; assert scipy.__version__ == '1.16.3', scipy.__version__; assert cupy.__version__ == '13.6.0', cupy.__version__; print('numerical stack OK:', numpy.__version__, scipy.__version__, cupy.__version__)"
 
 # A custom-node dependency may install CPU-only onnxruntime last. Reassert the
 # pinned GPU package after every node dependency, then fail the image build
